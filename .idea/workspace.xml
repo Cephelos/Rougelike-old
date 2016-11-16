@@ -4,7 +4,9 @@
     <option name="SCOPE_TYPE" value="3" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="31d1ad0a-1596-4d0d-8314-b108d4c13a98" name="Default" comment="" />
+    <list default="true" id="31d1ad0a-1596-4d0d-8314-b108d4c13a98" name="Default" comment="">
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/GameV2.py" afterPath="$PROJECT_DIR$/GameV2.py" />
+    </list>
     <ignored path="Rougelike.iws" />
     <ignored path=".idea/workspace.xml" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -26,8 +28,8 @@
       <file leaf-file-name="GameV2.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/GameV2.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="834">
-              <caret line="1664" column="29" selection-start-line="1664" selection-start-column="29" selection-end-line="1664" selection-end-column="29" />
+            <state relative-caret-position="768">
+              <caret line="194" column="10" selection-start-line="194" selection-start-column="10" selection-end-line="194" selection-end-column="10" />
               <folding>
                 <element signature="e#1#12#0" expanded="true" />
               </folding>
@@ -43,6 +45,9 @@
         <option value="Python Script" />
       </list>
     </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/libtcodpy.py" root0="SKIP_INSPECTION" />
@@ -87,7 +92,7 @@
       </profile-state>
     </entry>
   </component>
-  <component name="ProjectLevelVcsManager" settingsEditedManually="false">
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
     <OptionsSetting value="true" id="Add" />
     <OptionsSetting value="true" id="Remove" />
     <OptionsSetting value="true" id="Checkout" />
@@ -377,8 +382,8 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-9" y="-9" width="1938" height="1048" extended-state="7" />
-    <editor active="true" />
+    <frame x="-9" y="-9" width="1938" height="1048" extended-state="6" />
+    <editor active="false" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.0" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
@@ -741,8 +746,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/GameV2.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="834">
-          <caret line="1664" column="29" selection-start-line="1664" selection-start-column="29" selection-end-line="1664" selection-end-column="29" />
+        <state relative-caret-position="768">
+          <caret line="194" column="10" selection-start-line="194" selection-start-column="10" selection-end-line="194" selection-end-column="10" />
           <folding>
             <element signature="e#1#12#0" expanded="true" />
           </folding>

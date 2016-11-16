@@ -195,7 +195,7 @@ CRITMOD = 2
 BSP = True
 
 # skip player naming
-QUICKSTART = True
+QUICKSTART = False
 
 # allows for debug controls
 DEBUG_CONTROLS = True
@@ -2602,7 +2602,7 @@ def character_creation():
         libtcod.console_print_ex(0, SCREEN_WIDTH / 2, SCREEN_HEIGHT - 2, libtcod.BKGND_NONE, libtcod.CENTER, '')
 
         choice = menu('', ['Knight', 'Barbarian', 'Mage', 'Cleric', 'Rouge'], 24)
-
+        # choosing class, sets base growths and stats
         life_base = 0
         life_growth_min = 0
         life_growth_max = 0
@@ -2787,7 +2787,7 @@ def character_creation():
         libtcod.console_wait_for_keypress(True)
 
         choice = menu('', ['Human', 'Elf', 'Dwarf', 'Orc', 'Gnome'], 24)
-
+        # set player race, stats and growths
         if choice == 0:
             life_base += 2
             life_growth_min += 1
@@ -2937,7 +2937,7 @@ def character_creation():
 
             elif choice == 1:
                 player.fighter.gender = 'female'
-
+        # add player skills
         if player_class == 'knight':
             teach_skill('shield bash', player)
             pass
@@ -3148,6 +3148,7 @@ def input_name():
         key = libtcod.console_check_for_keypress(libtcod.KEY_PRESSED)
 
         timer += 1
+        # sets the blinking rate of the cursor
         if timer % (LIMIT_FPS // 4) == 0:
             if timer % (LIMIT_FPS // 2) == 0:
                 timer = 0
