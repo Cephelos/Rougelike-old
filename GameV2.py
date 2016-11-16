@@ -198,8 +198,10 @@ BSP = True
 QUICKSTART = False
 
 # allows for debug controls
+# F1 make player level 100
 DEBUG_CONTROLS = True
 
+DIAG_MOVEMENT = True
 
 
 controls_dict = {
@@ -284,7 +286,6 @@ class Entity:
             dx = int(round(dx / distance))
             dy = int(round(dy / distance))
         self.move(dx, dy)
-
 
     # astar pathfinding written by reddit user theMillionaire for r/rougelikedev
     # free use
@@ -568,7 +569,6 @@ class Item:
 
             entities.remove(self.owner)
 
-
     def use(self):
         # special case: if the entity has the Equipment component, the "use" action is to equip/dequip
         if self.owner.equipment:
@@ -625,7 +625,6 @@ class RangedWeapon:
             self.unequip_ranged()
         else:
             self.equip_ranged()
-
 
     def equip_ranged(self):
         # equip entity and show a message about it
@@ -1695,7 +1694,7 @@ def new_game():
     # a warm welcoming message!
     message('Welcome to the dungeon, ' + player.name + '!', libtcod.dark_yellow)
 
-
+#TODO update the save and load functions to include EVERY variable
 def save_game():
     # open a new empty shelve (possibly overwriting an old one) to write the game data
     file = shelve.open('savegame', 'n')
@@ -1756,7 +1755,7 @@ def next_floor():
     if BSP:
         make_bsp()
     else:
-        make_map()  # create a fresh new level!
+        make_map()
     initialize_fov()
 
 
@@ -1801,9 +1800,10 @@ def controls():
     if key.vk == libtcod.KEY_ENTER and key.lalt:
         # Alt+Enter: toggle fullscreen
         libtcod.console_set_fullscreen(not libtcod.console_is_fullscreen())
-
-    if key.vk == libtcod.KEY_F1:
-        player.fighter.xp += 762300
+    if DEBUG_CONTROLS:
+        if key.vk == libtcod.KEY_F1:
+            #go to level 100
+            player.fighter.xp += 762300
 
 
     elif key.vk == libtcod.KEY_ESCAPE:
@@ -2040,7 +2040,6 @@ def monster_death(monster):
     monster.ai = None
     monster.name = 'remains of ' + monster.name
     monster.send_to_back()
-
 
 def closest_monster(max_range):
     # closest enemy in range
