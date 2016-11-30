@@ -171,7 +171,8 @@ MSG_HEIGHT = PANEL_HEIGHT - 1
 # values for map generation
 ROOM_MAX_SIZE = 10
 ROOM_MIN_SIZE = 6
-MAX_ROOMS = 30
+MAX_ROOMS = 1
+SHOW_ROOM_NUM = False
 
 DEPTH = 10
 MIN_SIZE = 10
@@ -192,16 +193,18 @@ LEVEL_UP_FACTOR = 150
 CRITMOD = 2
 
 # switch between standard and BSP map gen
-BSP = True
+BSP = False
 
 # skip player naming
-QUICKSTART = False
+QUICKSTART = True
 
 # allows for debug controls
 # F1 make player level 100
 DEBUG_CONTROLS = True
 
 DIAG_MOVEMENT = True
+
+DTEST = True
 
 
 controls_dict = {
@@ -232,7 +235,7 @@ class Entity:
     # any entity in-game
     # stairs, player, monster, etc.
     def __init__(self, x, y, char, name, color, blocks=False, always_visible=False, locked=False,
-                 telepathy_visible=False, fighter=None, ai=None, item=None, equipment=None):
+                 telepathy_visible=False, fighter=None, ai=None, item=None, equipment=None, potion=None, ranged=None, scroll=None):
         self.x = x
         self.y = y
         self.char = char
@@ -255,12 +258,37 @@ class Entity:
         if self.item:
             self.item.owner = self
 
+
         self.equipment = equipment
         if self.equipment:  # let the Equipment component know who owns it
             self.equipment.owner = self
 
             # there must be an Item component for the Equipment component to work properly
             self.item = Item(self.equipment.weight)
+            self.item.owner = self
+
+        self.potion = potion
+        if self.potion:  # let the potion component know who owns it
+            self.potion.owner = self
+
+            # there must be an Item component for the potion component to work properly
+            self.item = Item(self.potion.weight)
+            self.item.owner = self
+
+        self.ranged = ranged
+        if self.ranged:  # let the potion component know who owns it
+            self.ranged.owner = self
+
+            # there must be an Item component for the potion component to work properly
+            self.item = Item(self.ranged.weight)
+            self.item.owner = self
+
+        self.scroll = scroll
+        if self.scroll:  # let the potion component know who owns it
+            self.scroll.owner = self
+
+            # there must be an Item component for the potion component to work properly
+            self.item = Item(self.scroll.weight)
             self.item.owner = self
 
     def move(self, dx, dy):
@@ -424,6 +452,7 @@ class Fighter:
         self.agility = agility
         self.race = race
         self.job = job
+        self.gender = gender
         self.death_function = death_function
         self.skills = []
         self.growths = []
@@ -523,9 +552,9 @@ class Fighter:
 
 
 class Item:
-
+    global entities
     # pick-up-able item
-    def __init__(self, weight, use_function=None, tome_spell=None, consumable=True, stackable=False, amt=1, ranged=None, potion=None):
+    def __init__(self, weight, use_function=None, tome_spell=None, consumable=True, stackable=False, amt=1, ranged=None):
         self.weight = weight
         self.use_function = use_function
         self.consumable = consumable
@@ -537,37 +566,43 @@ class Item:
         if self.ranged:
             self.ranged.owner = self
 
-        self.potion = potion
-        if self.potion:
-            self.potion.owner = self
+
+
+
+
 
     def pick_up(self):
         # add to inv remove from map
         if len(inventory) >= 26:
             message('Your inventory is full, cannot pick up ' + self.owner.name + '.', libtcod.red)
         else:
-            if self.stackable == True:
-                this_item_in_inventory = False
-                for i in inventory:
 
-                    if self.owner.name == i.name:
-                        i.item.amt += self.amt
-                        message('You picked up a ' + self.owner.name + 'x' + str(self.amt) + '. You now have ' + str(
-                            i.item.amt) + '.', libtcod.green)
-                        this_item_in_inventory = True
+            if player.x == self.owner.x and player.y == self.owner.y:
+                if self.owner.potion or self.owner.ranged or self.owner.scroll:
 
-                if this_item_in_inventory == False:
-                    inventory.append(self.owner)
-                    message('You picked up a ' + self.owner.name + 'x' + str(self.amt) + '.', libtcod.green)
+                    for inv in inventory:
+
+                        if self.owner.name == inv.name:
+                            inv.item.amt += self.amt
+                            message('You picked up a ' + self.owner.name + 'x' + str(self.amt) + '. You now have ' + str(
+                                inv.item.amt) + '.', libtcod.green)
+                            entities.remove(self.owner)
+                            break
+                    else:
+                        if self.owner in entities:
+
+                            inventory.append(self.owner)
+                            entities.remove(self.owner)
+
+                            message('You picked up a ' + self.owner.name + 'x' + str(self.amt) + '.', libtcod.green)
 
 
+                else:
+                    if self.owner in entities:
+                        inventory.append(self.owner)
+                        message('You picked up a ' + self.owner.name + '.', libtcod.green)
 
-            else:
-                inventory.append(self.owner)
-
-                message('You picked up a ' + self.owner.name + '.', libtcod.green)
-
-            entities.remove(self.owner)
+                        entities.remove(self.owner)
 
     def use(self):
         # special case: if the entity has the Equipment component, the "use" action is to equip/dequip
@@ -575,14 +610,16 @@ class Item:
             self.owner.equipment.toggle_equip()
             return
 
-        if self.ranged:
-            self.ranged.toggle_ready()
+        if self.owner.ranged:
+            self.owner.ranged.toggle_ready()
             return
 
-        if self.tome_spell is not None:
-            teach_skill(self.tome_spell, player)
-        if self.potion:
-            self.use_function(self.potion.effect, self.potion.magnitude, self.potion.duration)
+        if self.owner.scroll:
+            self.owner.scroll.spell(player)
+            return
+        if self.owner.potion:
+            consume_potion(self.potion.effect, self.potion.magnitude, self.potion.duration)
+            return
         if self.use_function is None:
             # calls use function
             message('The ' + self.owner.name + ' cannot be used.')
@@ -605,16 +642,28 @@ class Item:
 
 
 class Potion:
-    #TODO add effects to potions
-    def __init__(self, effect, magnitude, duration):
+    #TODO add status effects to potions
+    def __init__(self, weight, effect, magnitude, duration):
+        self.weight = weight
+        self.item = Item(weight, stackable=True)
         self.effect = effect
         self.magnitude = magnitude
         self.duration = duration
 
+class Scroll:
+
+    def __init__(self, weight, spell, teach=False):
+        self.weight = weight
+        self.item = Item(weight, stackable=True)
+        self.spell = spell
+        self.teach = teach
+
 
 class RangedWeapon:
 
-    def __init__(self, damage, effect, range, ready=False):
+    def __init__(self, weight, damage, effect, range, ready=False):
+        self.weight = weight
+        self.item = Item(weight, stackable=True)
         self.damage = damage
         self.effect = effect
         self.range = range
@@ -630,8 +679,8 @@ class RangedWeapon:
         # equip entity and show a message about it
         old_weap = None
         for ent in inventory:
-            if ent.item.ranged and ent.item.ranged.ready:
-                old_weap = ent.item.ranged
+            if ent.ranged and ent.ranged.ready:
+                old_weap = ent.ranged
                 break
 
         if old_weap is not None:
@@ -640,13 +689,13 @@ class RangedWeapon:
         self.ready = True
 
 
-        message('Readied ' + self.owner.owner.name + '.', libtcod.light_green)
+        message('Readied ' + self.owner.name + '.', libtcod.light_green)
 
     def unequip_ranged(self):
         # dequip entity and show a message about it
         if not self.ready: return
         self.ready = False
-        message('Put away ' + self.owner.owner.name + '.', libtcod.light_yellow)
+        message('Put away ' + self.owner.name + '.', libtcod.light_yellow)
 
 
 class Skill:
@@ -705,28 +754,33 @@ class Equipment:
             self.equip()
 
     def equip(self):
-        if self.slot == 'both hands':
-            old_equipment = get_equipped_in_slot('left hand')
-            if old_equipment is not None:
-                old_equipment.dequip()
-
-            old_equipment = get_equipped_in_slot('right hand')
-            if old_equipment is not None:
-                old_equipment.dequip()
-
         # equip entity and show a message about it
-        old_equipment = get_equipped_in_slot(self.slot)
-        if old_equipment is not None:
-            old_equipment.dequip()
+        for i in range(3):
+            old_equipment = get_equipped_in_slot(self.slot)
+
+            if old_equipment is not None:
+                old_equipment.dequip()
+
+        slotname = ''
+        for i in range(len(self.slot)):
+            slotname = slotname + str(self.slot[i]) + ', '
+
+        slotname = slotname[:-2]
 
         self.is_equipped = True
-        message('Equipped ' + self.owner.name + ' on ' + self.slot + '.', libtcod.light_green)
+        message('Equipped ' + self.owner.name + ' on ' + slotname + '.', libtcod.light_green)
 
     def dequip(self):
         # dequip entity and show a message about it
+        slotname = ''
+        for i in range(len(self.slot)):
+            slotname = slotname + str(self.slot[i]) + ', '
+
+        slotname = slotname[:-2]
+
         if not self.is_equipped: return
         self.is_equipped = False
-        message('Dequipped ' + self.owner.name + ' from ' + self.slot + '.', libtcod.light_yellow)
+        message('Dequipped ' + self.owner.name + ' from ' + slotname + '.', libtcod.light_yellow)
 
 
 ########################################################################################################################
@@ -1161,7 +1215,7 @@ def place_entities(room, set):
         # maximum number of monsters per room
         max_monsters = from_dungeon_level([[2, 1], [3, 4], [5, 6]])
 
-
+        set = 'goblins'
         if set == 'goblins':
             # chance of each monster
             monster_chances = {}
@@ -1195,7 +1249,7 @@ def place_entities(room, set):
             monster_chances['skeleton archer'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
             monster_chances['skeleton lord'] = from_dungeon_level([[15, 5], [30, 7], [60, 9]])
 
-        max_items = from_dungeon_level([[1, 1], [2, 4]])
+        max_items = 10#from_dungeon_level([[1, 1], [2, 4]])
 
         # chance of each item (by default they have a chance of 0 at level 1, which then goes up)
         item_chances = {}
@@ -1207,7 +1261,7 @@ def place_entities(room, set):
         item_chances['shield'] = from_dungeon_level([[15, 8]])
 
     num_monsters = libtcod.random_get_int(0, 0, max_monsters)
-
+    """
     for i in range(num_monsters):
         # choose random spot for this monster
         x = libtcod.random_get_int(0, room.x1 + 1, room.x2 - 1)
@@ -1442,9 +1496,9 @@ def place_entities(room, set):
 
                     monster = Entity(x, y, 'S', 'skeleton lord', libtcod.white, blocks=True, fighter=fighter_component,
                                      ai=ai_component)
-
+            print set
             entities.append(monster)
-
+    """
     num_items = libtcod.random_get_int(0, 0, max_items)
 
     for i in range(num_items):
@@ -1454,21 +1508,24 @@ def place_entities(room, set):
 
         # place if tile  not blocked
         if not is_blocked(x, y):
-            choice = random_choice(item_chances)
+            #choice = random_choice(item_chances)
+            choice = 'fireburst'
             if choice == 'heal':
                 # create potion
-                item = Entity(x, y, '!', 'healing potion', libtcod.violet, item=potion_heal_component)
+                item = Entity(x, y, '!', 'healing potion', libtcod.violet, potion=potion_heal_component)
+
+
 
             elif choice == 'lightning':
 
-                item = Entity(x, y, '#', 'Scroll of Lightning', libtcod.light_yellow, item=scroll_of_lightning)
+                item = Entity(x, y, '#', 'Scroll of Lightning', libtcod.light_yellow, scroll=scroll_of_lightning)
 
             elif choice == 'fireburst':
 
-                item = Entity(x, y, '#', 'Scroll of Fireburst', libtcod.light_yellow, item=scroll_of_fireburst)
+                item = Entity(x, y, '#', 'Scroll of Fireburst', libtcod.light_yellow, scroll=scroll_of_fireburst)
 
             elif choice == 'confuse':
-                item = Entity(x, y, '#', 'Croll of Sonfusion', libtcod.light_yellow, item=croll_of_sonfusion)
+                item = Entity(x, y, '#', 'Croll of Sonfusion', libtcod.light_yellow, scroll=croll_of_sonfusion)
 
             elif choice == 'long sword':
                 # create a sword
@@ -1480,9 +1537,13 @@ def place_entities(room, set):
 
                 item = Entity(x, y, '[', 'shield', libtcod.darker_orange, equipment=equipment_shield)
 
+
             entities.append(item)
-            item.send_to_back()  # items appear below other entities
             item.always_visible = True  # items are visible even out-of-FOV, if in an explored area
+            item.send_to_back()  # items appear below other entities
+
+            #entities.remove(item)
+
 
 
 def create_door(x, y, orientation):
@@ -1642,6 +1703,7 @@ def play_game():
         libtcod.sys_check_for_event(libtcod.EVENT_KEY_PRESS | libtcod.EVENT_MOUSE, key, mouse)
         render_all()
 
+
         libtcod.console_flush()
 
         check_level_up()
@@ -1693,6 +1755,11 @@ def new_game():
 
     # a warm welcoming message!
     message('Welcome to the dungeon, ' + player.name + '!', libtcod.dark_yellow)
+    message('You are a ' + player.fighter.gender + ' ' + player.fighter.race + ' ' + player.fighter.job + '.', libtcod.yellow)
+    message('Your quest is to defeat the demon lord on floor 50.', libtcod.light_red)
+    message('Good Luck!', libtcod.light_green)
+    message("Press '?' for a handy list of commands.",
+            libtcod.light_pink)
 
 #TODO update the save and load functions to include EVERY variable
 def save_game():
@@ -1774,11 +1841,14 @@ def check_level_up():
         player.fighter.hp += x
         player.fighter.mp += y
 
+def get_equipped_in_slot(slotList):  # returns equipment in slot, or None if empty
 
-def get_equipped_in_slot(slot):  # returns equipment in slot, or None if empty
     for ent in inventory:
-        if ent.equipment and ent.equipment.is_equipped and (ent.equipment.slot == slot or (ent.equipment.slot == 'both hands' and (slot == 'left hand' or slot == 'right hand'))):
-            return ent.equipment
+        for i in slotList:
+
+                if ent.equipment and ent.equipment.is_equipped and i in ent.equipment.slot:
+
+                    return ent.equipment
 
     return None
 
@@ -1811,19 +1881,8 @@ def controls():
 
     if game_state == 'alive':
         # movement keys
-        if key.vk == libtcod.KEY_UP or key.vk == libtcod.KEY_KP8:
-            player_move_or_attack(0, -1)
 
-        elif key.vk == libtcod.KEY_DOWN or key.vk == libtcod.KEY_KP2:
-            player_move_or_attack(0, 1)
-
-        elif key.vk == libtcod.KEY_LEFT or key.vk == libtcod.KEY_KP4:
-            player_move_or_attack(-1, 0)
-
-        elif key.vk == libtcod.KEY_RIGHT or key.vk == libtcod.KEY_KP6:
-            player_move_or_attack(1, 0)
-
-        elif key.vk == libtcod.KEY_HOME or key.vk == libtcod.KEY_KP7:
+        if key.vk == libtcod.KEY_HOME or key.vk == libtcod.KEY_KP7:
             player_move_or_attack(-1, -1)
 
         elif key.vk == libtcod.KEY_PAGEUP or key.vk == libtcod.KEY_KP9:
@@ -1835,8 +1894,21 @@ def controls():
         elif key.vk == libtcod.KEY_PAGEDOWN or key.vk == libtcod.KEY_KP3:
             player_move_or_attack(1, 1)
 
+        elif key.vk == libtcod.KEY_UP or key.vk == libtcod.KEY_KP8:
+            player_move_or_attack(0, -1)
+
+        elif key.vk == libtcod.KEY_DOWN or key.vk == libtcod.KEY_KP2:
+            player_move_or_attack(0, 1)
+
+        elif key.vk == libtcod.KEY_LEFT or key.vk == libtcod.KEY_KP4:
+            player_move_or_attack(-1, 0)
+
+        elif key.vk == libtcod.KEY_RIGHT or key.vk == libtcod.KEY_KP6:
+            player_move_or_attack(1, 0)
+
         elif key.vk == libtcod.KEY_KP5:
             pass  # do nothing ie wait for the monster to come to you
+
 
 
         elif key.vk == libtcod.KEY_1:
@@ -1867,12 +1939,18 @@ def controls():
 
             if key_char == 'g':
                 # pick up item
+
                 for entity in entities:
+
                     if entity.x == player.x and entity.y == player.y and entity.item:
+
                         entity.item.pick_up()
                         break
-
                 return
+
+
+
+
 
             if key_char == 'i':
                 # show the inventory; if an item is selected, use it
@@ -1893,10 +1971,6 @@ def controls():
                 fav_menu("Select skill to bind with a-z, then input key to bind with numbers 1-5 on top bar.\n")
                 return
 
-            if key_char == 'r':
-                # show the skill menu
-                ready_menu("Select throwing weapon to ready.\n")
-                return
 
             if key_char == 'd':
                 # show the inventory; if an item is selected, drop it
@@ -1941,7 +2015,7 @@ def controls():
             return 'didnt-take-turn'
 
         turn_count += 1
-        if turn_count % 20 == 0 and player.fighter.max_hp != player.fighter.hp:
+        if turn_count % 10 == 0 and player.fighter.max_hp != player.fighter.hp:
             player.fighter.hp += 1
 
         if turn_count % 10 == 0 and player.fighter.max_mp != player.fighter.mp:
@@ -1951,6 +2025,8 @@ def controls():
                 player.fighter.nutrition -= 1
             else:
                 player.fighter.hp -= 1
+
+
 
 
 
@@ -1985,6 +2061,7 @@ def player_move_or_attack(dx, dy):
 
 
 def open_door(door):
+    global entities
     if door.locked == True:
         message('The door is locked.', libtcod.red)
     else:
@@ -2189,7 +2266,6 @@ def check_for_collision_in_line(dist, direction):
                 x -= 1
             elif x > 0:
                 x += 1
-        print x,y
 
 
 ########################################################################################################################
@@ -2449,8 +2525,8 @@ def cast_shield_bash(caster):
 def cast_throw_weapon(caster):
 
     for ent in inventory:
-        if ent.item.ranged:
-            if ent.item.ranged.ready == True:
+        if ent.ranged:
+            if ent.ranged.ready == True:
 
                 use_throwing_weapon(caster, ent.item)
                 return
@@ -2459,11 +2535,12 @@ def cast_throw_weapon(caster):
 
 
 def use_throwing_weapon(caster, weapon):
+    global entities
     if caster == player:
         print weapon
-        message('Pick a direction using the numpad or arrow keys. Range: ' + str(weapon.ranged.range),
+        message('Pick a direction using the numpad or arrow keys. Range: ' + str(weapon.owner.ranged.range),
                 libtcod.light_cyan)
-        (monster_list, direction) = range_attack(weapon.ranged.range, getDir= True)
+        (monster_list, direction) = range_attack(weapon.owner.ranged.range, getDir= True)
     else:
         monster_list = [player]
     if monster_list is None: return 'cancelled'
@@ -2485,20 +2562,20 @@ def use_throwing_weapon(caster, weapon):
 
 
 
-    if weapon.stackable == False or weapon.amt == 1:
+    if weapon.amt == 1:
         inventory.remove(weapon.owner)  # consume item if consumable
     else:
         weapon.amt -= 1
 
-    ranged_component = RangedWeapon(damage=weapon.ranged.damage, effect=weapon.ranged.effect, range=weapon.ranged.range)
-    item_component = Item(0, use_function=use_throwing_weapon, stackable=True, amt=1, ranged=ranged_component)
-    ent = Entity(0, 0, "-", weapon.owner.name, libtcod.grey, item=item_component)
+    ranged_component = RangedWeapon(0, damage=weapon.owner.ranged.damage, effect=weapon.owner.ranged.effect, range=weapon.owner.ranged.range)
+    ent = Entity(0, 0, "-", weapon.owner.name, libtcod.grey, ranged=ranged_component)
+    ent.amt = 1
 
     entities.append(ent)
     ent.send_to_back()  # items appear below other entities
     ent.always_visible = True  # items are visible even out-of-FOV, if in an explored area
     if target is None:
-        (xval, yval) = check_for_collision_in_line(weapon.ranged.range, direction)
+        (xval, yval) = check_for_collision_in_line(weapon.owner.ranged.range, direction)
         ent.x = xval
         ent.y = yval
     else:
@@ -2631,6 +2708,14 @@ def character_creation():
             equipment_short_sword.equip()
             ent.always_visible = True
 
+            ent = Entity(0, 0, '/', 'long sword', libtcod.dark_grey, equipment=equipment_long_sword)
+            inventory.append(ent)
+            ent.always_visible = True
+
+            ent = Entity(0, 0, '/', 'claymore', libtcod.dark_grey, equipment=equipment_claymore)
+            inventory.append(ent)
+            ent.always_visible = True
+
 
             ent = Entity(0, 0, '[', 'small shield', libtcod.darker_orange, equipment=equipment_small_shield)
             inventory.append(ent)
@@ -2638,12 +2723,12 @@ def character_creation():
             ent.always_visible = True
             player_class = 'knight'
 
-            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, item=bread_component)
+            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, potion=bread_component)
             ent.item.amt = 3
             inventory.append(ent)
             ent.always_visible = True
 
-            ent = Entity(0, 0, '*', 'jerky', libtcod.darker_orange, item=jerky_component)
+            ent = Entity(0, 0, '*', 'jerky', libtcod.darker_orange, potion=jerky_component)
             ent.item.amt = 1
             inventory.append(ent)
             ent.always_visible = True
@@ -2667,12 +2752,12 @@ def character_creation():
 
             player_class = 'barbarian'
 
-            ent = Entity(0, 0, '*', 'jerky', libtcod.darker_orange, item=jerky_component)
+            ent = Entity(0, 0, '*', 'jerky', libtcod.darker_orange, potion=jerky_component)
             ent.item.amt = 2
             inventory.append(ent)
             ent.always_visible = True
 
-            ent = Entity(0, 0, '*', 'potato', libtcod.darker_orange, item=potato_component)
+            ent = Entity(0, 0, '*', 'potato', libtcod.darker_orange, potion=potato_component)
             ent.item.amt = 3
             inventory.append(ent)
             ent.always_visible = True
@@ -2698,7 +2783,7 @@ def character_creation():
 
             stat_highs = ['intelligence', 'wisdom', 'constitution']
 
-            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, item=bread_component)
+            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, potion=bread_component)
             ent.item.amt = 5
             inventory.append(ent)
             ent.always_visible = True
@@ -2720,7 +2805,7 @@ def character_creation():
 
             player_class = 'cleric'
 
-            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, item=bread_component)
+            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, potion=bread_component)
             ent.item.amt = 3
             inventory.append(ent)
             ent.always_visible = True
@@ -2750,26 +2835,26 @@ def character_creation():
             ent.always_visible = True
 
 
-            ent = Entity(0, 0, "-", 'throwing knife', libtcod.grey, item=throwing_knife)
+            ent = Entity(0, 0, "-", 'throwing knife', libtcod.grey, ranged=throwing_knife)
             inventory.append(ent)
             ent.item.amt = 5
-            ent.item.ranged.equip_ranged()
+            ent.ranged.equip_ranged()
             ent.always_visible = True
 
 
-            ent = Entity(0, 0, "-", 'heavy throwing knife', libtcod.grey, item=heavy_throwing_knife)
+            ent = Entity(0, 0, "-", 'heavy throwing knife', libtcod.grey, ranged=heavy_throwing_knife)
             inventory.append(ent)
             ent.item.amt = 3
             ent.always_visible = True
 
             player_class = 'rouge'
 
-            ent = Entity(0, 0, '*', 'jerky', libtcod.darker_orange, item=jerky_component)
+            ent = Entity(0, 0, '*', 'jerky', libtcod.darker_orange, potion=jerky_component)
             ent.item.amt = 2
             inventory.append(ent)
             ent.always_visible = True
 
-            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, item=bread_component)
+            ent = Entity(0, 0, '*', 'bread', libtcod.darker_orange, potion=bread_component)
             ent.item.amt = 1
             inventory.append(ent)
             ent.always_visible = True
@@ -2975,18 +3060,24 @@ def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color, t
     libtcod.console_print_ex(panel, x + total_width / 2, y, libtcod.BKGND_NONE, libtcod.CENTER,
                              name + ': ' + str(value) + '/' + str(maximum))
 
+message_odd_or_even = 0
 
 def message(new_msg, color=libtcod.white):
     # split the message if necessary, among multiple lines
     new_msg_lines = textwrap.wrap(new_msg, MSG_WIDTH)
-
+    global message_odd_or_even
+    message_odd_or_even = (message_odd_or_even + 1) % 2
     for line in new_msg_lines:
         # if the buffer is full, remove the first line to make room for the new one
         if len(game_msgs) == MSG_HEIGHT - 1:
             del game_msgs[0]
 
         # add the new line as a tuple, with the text and the color
-        game_msgs.append((line, color))
+        if message_odd_or_even == 0:
+            game_msgs.append(('#' + line, color))
+
+        else:
+            game_msgs.append(('@' + line, color))
 
 
 def menu(header, options, width):
@@ -3042,12 +3133,19 @@ def inventory_menu(header):
             text = i.name
             # show additional information, in case it's equipped
 
+
             if i.equipment and i.equipment.is_equipped:
-                text = text + ' (on ' + i.equipment.slot + ')'
-            if i.item.stackable:
+                slotname = ''
+                for j in range(len(i.equipment.slot)):
+                    slotname = slotname + str(i.equipment.slot[j]) + ', '
+
+                slotname = slotname[:-2]
+
+                text = text + ' (on ' + slotname + ')'
+            if i.potion or i.ranged or i.scroll:
                 text = text + " x " + str(i.item.amt)
-            if i.item.ranged:
-                if i.item.ranged.ready == True:
+            if i.ranged:
+                if i.ranged.ready == True:
                     text = text + ' (ready)'
 
 
@@ -3249,101 +3347,128 @@ def get_names_under_mouse():
 
 #declares components for items to help with standardization
 if 'swords' or True:
-    equipment_short_sword = Equipment(1, 'LightBlade', slot='right hand', power_bonus=2)
+    equipment_short_sword = Equipment(1, 'LightBlade', slot=['right hand'], power_bonus=2)
 
-    equipment_long_sword = Equipment(1, 'LightBlade', slot='right hand', power_bonus=3)
+    equipment_long_sword = Equipment(1, 'LightBlade', slot=['right hand'], power_bonus=3)
 
 if 'greatswords' or True:
-    equipment_bastard_sword = Equipment(1, 'HeavyBlade', slot='both hands', power_bonus=4)
+    equipment_bastard_sword = Equipment(1, 'HeavyBlade', slot=['left hand', 'right hand'], power_bonus=4)
 
-    equipment_claymore = Equipment(1, 'HeavyBlade', slot='both hands', power_bonus=5)
+    equipment_claymore = Equipment(1, 'HeavyBlade', slot=['left hand', 'right hand'], power_bonus=5)
 
 if 'axes' or True:
-    equipment_woodcutter_axe = Equipment(2, 'LightAxe', slot='right hand', power_bonus=3)
+    equipment_woodcutter_axe = Equipment(2, 'LightAxe', slot=['right hand'], power_bonus=3)
 
-    equipment_battle_axe = Equipment(2, 'LightAxe', slot='right hand', power_bonus=4)
+    equipment_battle_axe = Equipment(2, 'LightAxe', slot=['right hand'], power_bonus=4)
 
 if 'greataxes' or True:
-    equipment_war_axe = Equipment(2, 'HeavyAxe', slot='both hands', power_bonus = 5)
+    equipment_war_axe = Equipment(2, 'HeavyAxe', slot=['left hand', 'right hand'], power_bonus = 5)
 
-    equipment_great_axe = Equipment(2, 'HeavyAxe', slot='both hands', power_bonus = 6)
+    equipment_great_axe = Equipment(2, 'HeavyAxe', slot=['left hand', 'right hand'], power_bonus = 6)
 
 if 'hammers' or True:
-    equipment_club = Equipment(2, 'Hammer', slot='right hand', power_bonus=2)
+    equipment_club = Equipment(2, 'Hammer', slot=['right hand'], power_bonus=2)
 
-    equipment_mace = Equipment(2, 'Hammer', slot='right hand', power_bonus=3)
+    equipment_mace = Equipment(2, 'Hammer', slot=['right hand'], power_bonus=3)
 
-    equipment_warhammer = Equipment(2, 'Hammer', slot='right hand', power_bonus=4)
+    equipment_warhammer = Equipment(2, 'Hammer', slot=['right hand'], power_bonus=4)
 
 if 'staves' or True:
-    equipment_balsa_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=-1)
+    equipment_balsa_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=-1)
 
-    equipment_cedar_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=2)
+    equipment_cedar_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=2)
 
-    equipment_birch_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=3)
+    equipment_birch_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=3)
 
-    equipment_oak_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=4)
+    equipment_oak_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=4)
 
-    equipment_beech_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=5)
+    equipment_beech_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=5)
 
-    equipment_maple_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=6)
+    equipment_maple_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=6)
 
-    equipment_mahogany_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=7)
+    equipment_mahogany_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=7)
 
-    equipment_ironbark_staff = Equipment(1, 'Staff', slot='right hand', power_bonus=8)
-
-if 'shields' or True:
-    equipment_small_shield = Equipment(1, 'SmallShield', slot='left hand', defense_bonus=1)
-
-    equipment_shield = Equipment(1, 'SmallShield', slot='left hand', defense_bonus=2)
+    equipment_ironbark_staff = Equipment(1, 'Staff', slot=['right hand'], power_bonus=8)
 
 if 'throwing weapons' or True:
-    ranged_component = RangedWeapon(damage=1, effect=None, range=5)
-    throwing_knife = Item(0, use_function=use_throwing_weapon, stackable=True, amt=1, ranged=ranged_component)
+    throwing_knife = RangedWeapon(0, damage=1, effect=None, range=5)
 
-    ranged_component = RangedWeapon(damage=2, effect=None, range=4)
-    heavy_throwing_knife = Item(0, use_function=use_throwing_weapon, stackable=True, amt=1, ranged=ranged_component)
+    heavy_throwing_knife = RangedWeapon(0, damage=2, effect=None, range=4)
 
 if 'large throwing weapons' or True:
-    ranged_component = RangedWeapon(damage=3, effect=None, range=3)
-    throwing_axe = Item(0, use_function=use_throwing_weapon, stackable=True, amt=1, ranged=ranged_component)
+    throwing_axe = RangedWeapon(0, damage=3, effect=None, range=3)
 
-    ranged_component = RangedWeapon(damage=4, effect=None, range=2)
-    heavy_throwing_axe = Item(0, use_function=use_throwing_weapon, stackable=True, amt=1, ranged=ranged_component)
+    heavy_throwing_axe = RangedWeapon(0, damage=4, effect=None, range=2)
+
+if 'shields' or True:
+    equipment_small_shield = Equipment(1, 'SmallShield', slot=['left hand'], defense_bonus=1)
+
+    equipment_shield = Equipment(1, 'Shield', slot=['left hand'], defense_bonus=2)
+
+if 'LightArmor' or True:
+    equipment_cloth_tunic = Equipment(1, 'LightArmor', slot=['body'], defense_bonus=1)
+
+    equipment_hide_tunic = Equipment(1, 'LightArmor', slot=['body'], defense_bonus=2)
+
+    equipment_leather_armor = Equipment(1, 'LightArmor', slot=['body'], defense_bonus=3)
+
+    equipment_boiled_leather_armor = Equipment(1, 'LightArmor', slot=['body'], defense_bonus=4)
+
+    equipment_reinforced_leather_armor = Equipment(1, 'LightArmor', slot=['body'], defense_bonus=5)
+
+if 'MediumArmor' or True:
+    equipment_studded_leather_armor = Equipment(1, 'MediumArmor', slot=['body'], defense_bonus=3)
+
+    equipment_light_chainmail = Equipment(1, 'MediumArmor', slot=['body'], defense_bonus=4)
+
+    equipment_chainmail = Equipment(1, 'MediumArmor', slot=['body'], defense_bonus=5)
+
+    equipment_heavy_chainmail = Equipment(1, 'MediumArmor', slot=['body'], defense_bonus=6)
+
+    equipment_elven_chainmail = Equipment(1, 'MediumArmor', slot=['body'], defense_bonus=7)
+
+if 'HeavyArmor' or True:
+    equipment_iron_chestplate = Equipment(1, 'HeavyArmor', slot=['body'], defense_bonus=4)
+
+    equipment_banded_iron_chestplate = Equipment(1, 'HeavyArmor', slot=['body'], defense_bonus=5)
+
+    equipment_steel_chestplate = Equipment(1, 'HeavyArmor', slot=['body'], defense_bonus=6)
+
+    equipment_steel_plate_armor = Equipment(1, 'HeavyArmor', slot=['body'], defense_bonus=7)
+
+    equipment_orichalcum_chestplate = Equipment(1, 'HeavyArmor', slot=['body'], defense_bonus=8)
+
+if 'Cloak' or True:
+    equipment_simple_cape = Equipment(1, 'Cloak', slot=['cloak'], defense_bonus=1)
+    equipment_hooded_cloak = Equipment(1, 'Cloak', slot=['cloak', 'head'], defense_bonus=2, evasion_bonus=1)
 
 if 'scrolls' or True:
 
-    scroll_of_lightning = Item(0.3, use_function=cast_lightning)
+    scroll_of_lightning = Scroll(0.1, cast_lightning)
 
-    scroll_of_fireburst = Item(0.3, use_function=cast_fireburst)
+    scroll_of_fireburst = Scroll(0.1, cast_fireburst)
 
-    croll_of_sonfusion = Item(0.3, use_function=cast_confuse)
+    croll_of_sonfusion = Scroll(0.1, cast_confuse)
 
 if 'potions' or True:
-    potion_component = Potion('heal', 30, 0)
-    potion_heal_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
+    potion_heal_component = Potion(0.3, 'heal', 30, 0)
 
-    potion_component = Potion('heal', 50, 0)
-    potion_large_heal_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
 
-    potion_component = Potion('detect monster', 1, 50)
-    potion_detect_monster_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
+    potion_large_heal_component = Potion(0.3, 'heal', 50, 0)
+
+    potion_detect_monster_component = Potion(0.3, 'detect monster', 1, 50)
+
 
 if 'food' or True:
-    potion_component = Potion('food', 150, 0)
-    bread_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
+    bread_component = Potion(0.3, 'food', 150, 0)
 
-    potion_component = Potion('food', 300, 0)
-    jerky_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
+    jerky_component = Potion(0.3, 'food', 300, 0)
 
-    potion_component = Potion('food', 50, 0)
-    potato_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
+    potato_component = Potion(0.3, 'food', 50, 0)
 
-    potion_component = Potion('food', 100, 0)
-    honey_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
+    honey_component = Potion(0.3, 'food', 100, 0)
 
-    potion_component = Potion('food', 1000, 0)
-    lembas_bread_component = Item(0.3, use_function=consume_potion, stackable=True, potion=potion_component)
+    lembas_bread_component = Potion(0.3, 'food', 1000, 0)
 
 ########################################################################################################################
 #   Formulas
@@ -3357,7 +3482,7 @@ def attack_formula(caster, target):
     return (dmg, False)
 
 def attack_formula_throwing(caster, target, weapon):
-    dmg = libtcod.random_get_int(0,1,caster.fighter.strength) + weapon.ranged.damage - target.fighter.defense
+    dmg = libtcod.random_get_int(0,1,caster.fighter.strength) + weapon.owner.ranged.damage - target.fighter.defense
 
     if caster.fighter.agility > libtcod.random_get_int(0,0,100):
         return (dmg*CRITMOD, True)
