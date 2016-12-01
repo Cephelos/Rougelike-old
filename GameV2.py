@@ -6,7 +6,6 @@ import textwrap
 
 
 import libtcodpy as libtcod
-
 ########################################################################################################################
 #   Notes
 #
@@ -168,12 +167,13 @@ MSG_X = BAR_WIDTH + 2
 MSG_WIDTH = SCREEN_WIDTH - BAR_WIDTH - 2
 MSG_HEIGHT = PANEL_HEIGHT - 1
 
-# values for map generation
+# values for standard map gen
 ROOM_MAX_SIZE = 10
 ROOM_MIN_SIZE = 6
-MAX_ROOMS = 1
+MAX_ROOMS = 2
 SHOW_ROOM_NUM = False
 
+# Values for BSP map gen
 DEPTH = 10
 MIN_SIZE = 10
 FULL_ROOMS = False
@@ -231,6 +231,7 @@ color_light_ground = libtcod.Color(230, 180, 50)
 ########################################################################################################################
 # Entity Management
 ########################################################################################################################
+
 class Entity:
     # any entity in-game
     # stairs, player, monster, etc.
@@ -554,21 +555,12 @@ class Fighter:
 class Item:
     global entities
     # pick-up-able item
-    def __init__(self, weight, use_function=None, tome_spell=None, consumable=True, stackable=False, amt=1, ranged=None):
+    def __init__(self, weight, use_function=None, consumable=True, stackable=False, amt=1):
         self.weight = weight
         self.use_function = use_function
         self.consumable = consumable
-        self.tome_spell = tome_spell
         self.stackable = stackable
         self.amt = amt
-
-        self.ranged = ranged
-        if self.ranged:
-            self.ranged.owner = self
-
-
-
-
 
 
     def pick_up(self):
@@ -615,10 +607,26 @@ class Item:
             return
 
         if self.owner.scroll:
-            self.owner.scroll.spell(player)
+
+            if self.owner.scroll.teach is not None:
+
+                teach_skill(self.owner.scroll.teach, player)
+
+            else:
+                self.owner.scroll.spell(player)
+
+            if self.amt == 1:
+                inventory.remove(self.owner)  # consume item if consumable
+            else:
+                self.amt -= 1
+
             return
         if self.owner.potion:
             consume_potion(self.potion.effect, self.potion.magnitude, self.potion.duration)
+            if self.amt == 1:
+                inventory.remove(self.owner)  # consume item if consumable
+            else:
+                self.amt -= 1
             return
         if self.use_function is None:
             # calls use function
@@ -650,9 +658,10 @@ class Potion:
         self.magnitude = magnitude
         self.duration = duration
 
+
 class Scroll:
 
-    def __init__(self, weight, spell, teach=False):
+    def __init__(self, weight, spell, teach=None):
         self.weight = weight
         self.item = Item(weight, stackable=True)
         self.spell = spell
@@ -704,15 +713,6 @@ class Skill:
         self.cast_function = cast_function
         self.cost = cost
         self.bind = bind
-
-    def learn(self):
-        # add to skill remove from inv
-        if len(inventory) >= 26:
-            message('You cannot learn any more skills ' + self.owner.name + '.', libtcod.red)
-        else:
-            skills.append(self.owner)
-            inventory.remove(self.owner)
-            message('You learned ' + self.owner.name + '.', libtcod.green)
 
     def cast(self):
         # calls use function
@@ -1209,20 +1209,22 @@ def initialize_fov():
 ########################################################################################################################
 
 def place_entities(room, set):
+
     # data for random gen stuff
+
     if 'room gen data' or True:
         # choose random number of monsters
         # maximum number of monsters per room
         max_monsters = from_dungeon_level([[2, 1], [3, 4], [5, 6]])
 
-        set = 'goblins'
+
         if set == 'goblins':
             # chance of each monster
             monster_chances = {}
             monster_chances['goblin'] = 80
             monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
             monster_chances['goblin shaman'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
-            monster_chances['goblin rifeman'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
+            monster_chances['goblin crossbowman'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
             monster_chances['ogre'] = from_dungeon_level([[15, 5], [30, 7], [60, 9]])
 
         elif set == 'orcs':
@@ -1237,8 +1239,8 @@ def place_entities(room, set):
             monster_chances = {}
             monster_chances['imp'] = 80
             monster_chances['devil'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
-            monster_chances['demon conjurer'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
-            monster_chances['demon archer'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
+            monster_chances['lava frog'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
+            monster_chances['spitter'] = from_dungeon_level([[15, 2], [30, 4], [60, 6]])
             monster_chances['archdemon'] = from_dungeon_level([[15, 5], [30, 7], [60, 9]])
 
         elif set == 'skeletons':
@@ -1261,7 +1263,7 @@ def place_entities(room, set):
         item_chances['shield'] = from_dungeon_level([[15, 8]])
 
     num_monsters = libtcod.random_get_int(0, 0, max_monsters)
-    """
+
     for i in range(num_monsters):
         # choose random spot for this monster
         x = libtcod.random_get_int(0, room.x1 + 1, room.x2 - 1)
@@ -1269,6 +1271,7 @@ def place_entities(room, set):
 
         # only place it if the tile is not blocked
         if not is_blocked(x, y):
+            monster = None
             choice = random_choice(monster_chances)
             ########################################################################################################################
             #   Goblins
@@ -1299,7 +1302,7 @@ def place_entities(room, set):
                     fighter_component = Fighter(xp=30, hp_stat=20, mp_stat=30, constitution=2, strength=1, dexterity=2,
                                                 intelligence=3, wisdom=3, agility=1, race='orc',
                                                 death_function=monster_death)
-                    ai_component = BasicMonster()
+                    ai_component = MageBasicMonster()
 
                     monster = Entity(x, y, 's', 'goblin shaman', libtcod.desaturated_green, blocks=True,
                                      fighter=fighter_component, ai=ai_component)
@@ -1496,9 +1499,14 @@ def place_entities(room, set):
 
                     monster = Entity(x, y, 'S', 'skeleton lord', libtcod.white, blocks=True, fighter=fighter_component,
                                      ai=ai_component)
-            print set
+
+
+
+            if monster is None:
+                i -= 1
+                continue
             entities.append(monster)
-    """
+
     num_items = libtcod.random_get_int(0, 0, max_items)
 
     for i in range(num_items):
@@ -1508,13 +1516,11 @@ def place_entities(room, set):
 
         # place if tile  not blocked
         if not is_blocked(x, y):
-            #choice = random_choice(item_chances)
-            choice = 'fireburst'
+            choice = random_choice(item_chances)
+
             if choice == 'heal':
                 # create potion
                 item = Entity(x, y, '!', 'healing potion', libtcod.violet, potion=potion_heal_component)
-
-
 
             elif choice == 'lightning':
 
@@ -1526,6 +1532,10 @@ def place_entities(room, set):
 
             elif choice == 'confuse':
                 item = Entity(x, y, '#', 'Croll of Sonfusion', libtcod.light_yellow, scroll=croll_of_sonfusion)
+
+            elif choice == 'force tome':
+
+                item = Entity(x, y, '#', 'Tome of Force', libtcod.brass, scroll=force_tome)
 
             elif choice == 'long sword':
                 # create a sword
@@ -1543,7 +1553,6 @@ def place_entities(room, set):
             item.send_to_back()  # items appear below other entities
 
             #entities.remove(item)
-
 
 
 def create_door(x, y, orientation):
@@ -1573,6 +1582,7 @@ def set_monster_squad():
     monster_sets['orcs'] = 50
     monster_sets['skeletons'] = 50
     monster_sets['demons'] = 50
+    monster_sets['slimes'] = 50
     return random_choice(monster_sets)
 
 
@@ -2027,9 +2037,6 @@ def controls():
                 player.fighter.hp -= 1
 
 
-
-
-
 def player_move_or_attack(dx, dy):
     global fov_recompute
 
@@ -2117,6 +2124,7 @@ def monster_death(monster):
     monster.ai = None
     monster.name = 'remains of ' + monster.name
     monster.send_to_back()
+
 
 def closest_monster(max_range):
     # closest enemy in range
@@ -2274,37 +2282,43 @@ def check_for_collision_in_line(dist, direction):
 
 #Can add skills to player or monster
 def teach_skill(spell, student):
-    if spell == 'fireburst':
-        fireburst = Skill('fireburst', cast_function=cast_fireburst, cost=5, school='sorcery')
-        student.fighter.skills.append(fireburst)
+    if len(student.fighter.skills) >= 26:
+        message('Too many skills, cannot learn ' + self.owner.name + '.', libtcod.red)
+    for skill in student.fighter.skills:
+        if spell == skill.name:
+            message('You already know ' + skill.name + '.', libtcod.red)
+    else:
+        if spell == 'fireburst':
+            fireburst = Skill('fireburst', cast_function=cast_fireburst, cost=5, school='sorcery')
+            student.fighter.skills.append(fireburst)
 
-    if spell == 'force':
-        force = Skill('force', cast_function=cast_force, cost=2, school='sorcery')
-        student.fighter.skills.append(force)
+        if spell == 'force':
+            force = Skill('force', cast_function=cast_force, cost=2, school='sorcery')
+            student.fighter.skills.append(force)
 
-    if spell == 'barrier':
-        barrier = Skill('barrier', cast_function=cast_barrier, cost=8, school='abjuration')
-        student.fighter.skills.append(barrier)
+        if spell == 'barrier':
+            barrier = Skill('barrier', cast_function=cast_barrier, cost=8, school='abjuration')
+            student.fighter.skills.append(barrier)
 
-    if spell == 'heal':
-        heal = Skill('heal', cast_function=cast_heal, cost=20, school='miracles')
-        student.fighter.skills.append(heal)
+        if spell == 'heal':
+            heal = Skill('heal', cast_function=cast_heal, cost=20, school='miracles')
+            student.fighter.skills.append(heal)
 
-    if spell == 'confusion':
-        heal = Skill('confusion', cast_function=cast_confuse, cost=10, school='enchantment')
-        student.fighter.skills.append(confuse)
+        if spell == 'confusion':
+            heal = Skill('confusion', cast_function=cast_confuse, cost=10, school='enchantment')
+            student.fighter.skills.append(confuse)
 
-    if spell == 'detect monster':
-        detect_monster = Skill('detect monster', cast_function=cast_detect_monster, cost=10, school='divination')
-        student.fighter.skills.append(detect_monster)
+        if spell == 'detect monster':
+            detect_monster = Skill('detect monster', cast_function=cast_detect_monster, cost=10, school='divination')
+            student.fighter.skills.append(detect_monster)
 
-    if spell == 'shield bash':
-        shield_bash = Skill('shield bash', cast_function=cast_shield_bash, cost=10, school='weapon art')
-        student.fighter.skills.append(shield_bash)
+        if spell == 'shield bash':
+            shield_bash = Skill('shield bash', cast_function=cast_shield_bash, cost=10, school='weapon art')
+            student.fighter.skills.append(shield_bash)
 
-    if spell == 'throw weapon':
-        throw_weapon = Skill('throw weapon', cast_function=cast_throw_weapon, cost=0, school='weapon art')
-        student.fighter.skills.append(throw_weapon)
+        if spell == 'throw weapon':
+            throw_weapon = Skill('throw weapon', cast_function=cast_throw_weapon, cost=0, school='weapon art')
+            student.fighter.skills.append(throw_weapon)
 
 
 def consume_potion(effect, magnitude, duration):
@@ -2502,9 +2516,7 @@ def cast_shield_bash(caster):
     if monster_list is None: return 'cancelled'
     for i in range(len(monster_list)):
         target = monster_list[i]
-        print target.name + 'woo'
-        print target.fighter
-        print target.fighter.effects
+
         if hit_formula(caster, target):
             (damage, critical) = attack_formula(caster, target)
 
@@ -2537,7 +2549,7 @@ def cast_throw_weapon(caster):
 def use_throwing_weapon(caster, weapon):
     global entities
     if caster == player:
-        print weapon
+
         message('Pick a direction using the numpad or arrow keys. Range: ' + str(weapon.owner.ranged.range),
                 libtcod.light_cyan)
         (monster_list, direction) = range_attack(weapon.owner.ranged.range, getDir= True)
@@ -2590,9 +2602,7 @@ def apply_dazed(target, duration = 2):
         target.ai = DazedMonster(old_ai, num_turns=duration)
         target.ai.owner = target  # tell the new component who owns it
         message(target.name + ' is dazed!')
-        print target
-        print target.fighter
-        print target.fighter.effects
+
         target.fighter.effects.append('dazed')
 
     elif 'dazed' not in target.fighter.effects:
@@ -2989,14 +2999,14 @@ def character_creation():
         if start_mana < 1:
             start_mana = 1
         x = stat_growths
-        print x
+
         fighter_component = Fighter(xp=0, hp_stat=start_life, mp_stat=start_mana, constitution=constitution,
                                     strength=strength, dexterity=dexterity, wisdom=wisdom, intelligence=intelligence,
                                     agility=agility, growths=stat_growths, race=player_race, job=player_class,
                                     death_function=player_death)
         player = Entity(0, 0, '@', 'player', libtcod.white, blocks=True, fighter=fighter_component)
         player.fighter.growths = stat_growths
-        print player.fighter.growths
+
 
 
         if QUICKSTART == False:
@@ -3060,24 +3070,24 @@ def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color, t
     libtcod.console_print_ex(panel, x + total_width / 2, y, libtcod.BKGND_NONE, libtcod.CENTER,
                              name + ': ' + str(value) + '/' + str(maximum))
 
-message_odd_or_even = 0
+message_num = 0
 
 def message(new_msg, color=libtcod.white):
+    global message_num
     # split the message if necessary, among multiple lines
     new_msg_lines = textwrap.wrap(new_msg, MSG_WIDTH)
-    global message_odd_or_even
-    message_odd_or_even = (message_odd_or_even + 1) % 2
+
     for line in new_msg_lines:
         # if the buffer is full, remove the first line to make room for the new one
         if len(game_msgs) == MSG_HEIGHT - 1:
             del game_msgs[0]
 
         # add the new line as a tuple, with the text and the color
-        if message_odd_or_even == 0:
-            game_msgs.append(('#' + line, color))
-
+        if message_num % 2 == 0:
+            game_msgs.append(('-' + line, color))
         else:
-            game_msgs.append(('@' + line, color))
+            game_msgs.append(('>' + line, color))
+        message_num +=1
 
 
 def menu(header, options, width):
@@ -3450,6 +3460,10 @@ if 'scrolls' or True:
 
     croll_of_sonfusion = Scroll(0.1, cast_confuse)
 
+if 'tomes' or True:
+
+    force_tome = Scroll(0.3, cast_force, teach='force')
+
 if 'potions' or True:
     potion_heal_component = Potion(0.3, 'heal', 30, 0)
 
@@ -3457,7 +3471,6 @@ if 'potions' or True:
     potion_large_heal_component = Potion(0.3, 'heal', 50, 0)
 
     potion_detect_monster_component = Potion(0.3, 'detect monster', 1, 50)
-
 
 if 'food' or True:
     bread_component = Potion(0.3, 'food', 150, 0)
@@ -3496,7 +3509,7 @@ def mag_attack_formula(caster, target):
     return (dmg, False)
 
 def hit_formula(caster, target):
-    print caster.fighter.accuracy, target.fighter.evasion
+
     if(caster.fighter.accuracy - target.fighter.evasion >= libtcod.random_get_int(0,1,100)):
 
         return True
@@ -3530,6 +3543,7 @@ libtcod.sys_set_fps(LIMIT_FPS)
 con = libtcod.console_new(SCREEN_WIDTH, SCREEN_HEIGHT)
 
 panel = libtcod.console_new(SCREEN_WIDTH, PANEL_HEIGHT)
+
 main_menu()
 
 
